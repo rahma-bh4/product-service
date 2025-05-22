@@ -10,8 +10,18 @@ import org.springframework.web.bind.annotation.*;
 import com.project.productService.dto.ProductDto;
 import com.project.productService.service.ProductService;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
+import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.util.UUID;
 @RestController
 @RequestMapping("/api/products")
 public class ProductController {
@@ -62,5 +72,52 @@ public class ProductController {
     @GetMapping("/low-stock")
     public ResponseEntity<List<ProductDto>> getLowStockProducts(@RequestParam(defaultValue = "5") int threshold) {
         return ResponseEntity.ok(productService.getLowStockProducts(threshold));
+    }
+    
+    @PostMapping("/{id}/upload-image")
+    public ResponseEntity<?> uploadProductImage(
+            @PathVariable Long id,
+            @RequestParam("image") MultipartFile file) {
+        
+        try {
+            // Get the product to update
+            ProductDto product = productService.getProductById(id);
+            
+            // Create directory structure if it doesn't exist
+            String uploadDir = "uploads/products";
+            Path uploadPath = Paths.get(uploadDir);
+            if (!Files.exists(uploadPath)) {
+                Files.createDirectories(uploadPath);
+            }
+            
+            // Generate a unique filename
+            String filename = UUID.randomUUID().toString();
+            String extension = StringUtils.getFilenameExtension(file.getOriginalFilename());
+            if (extension != null) {
+                filename += "." + extension;
+            }
+            
+            // Save the file
+            Path filePath = uploadPath.resolve(filename);
+            Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+            
+            // Update the product with the new image URL
+            String imageUrl = "/uploads/products/" + filename;
+            product.setImageUrl(imageUrl);
+            
+            // Save the updated product
+            ProductDto updatedProduct = productService.updateProduct(id, product);
+            
+            // Return response with image URL
+            Map<String, String> response = new HashMap<>();
+            response.put("imageUrl", imageUrl);
+            
+            return ResponseEntity.ok().body(response);
+            
+        } catch (IOException e) {
+            return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", "Failed to upload image: " + e.getMessage()));
+        }
     }
 }
